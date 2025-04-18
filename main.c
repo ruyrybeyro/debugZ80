@@ -361,6 +361,9 @@ void do_commands(char * str)
                    while(1)
                    {
                       Trace = TraceOn;
+                      // fool optimizer compilers, Trace is never 4
+                      if (Trace == 4)
+                         printf("%d", Trace);
                       if (Trace != 3)
                          break;
                       // need it to overcome compiler optimizations
