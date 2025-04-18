@@ -4,7 +4,7 @@
  *
  */
 
-#include "../QtSpecem/h/env.h"
+#include "env.h"
 
 #undef build_F
 #undef read_F

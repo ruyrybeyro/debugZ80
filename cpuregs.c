@@ -11,8 +11,8 @@
 #include <stdlib.h>
 //#include <alloc.h>
 
-#include "../QtSpecem/h/quirks.h"
-#include "../QtSpecem/h/env.h"
+#include "quirks.h"
+#include "env.h"
 
 char board[16][29] =
 {

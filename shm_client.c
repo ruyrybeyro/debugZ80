@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../QtSpecem/h/quirks.h"
-#include "../QtSpecem/h/env.h"
+#include "quirks.h"
+#include "env.h"
 
 #define SHMSZ     65536
 #define SHMVARS sizeof(struct Z80vars)+(sizeof(union Z80Regs)*2)+sizeof(struct CPU_flags) \

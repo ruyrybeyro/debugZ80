@@ -8,7 +8,7 @@ EQ            = =
 CC            = clang
 DEFINES       = 
 CFLAGS        = -pipe -O2 $(EXPORT_ARCH_ARGS) -Wall -W -fPIC $(DEFINES)
-INCPATH       = -I. 
+INCPATH       = -I. -I../QtSpecem/h
 DEL_FILE      = rm -f
 CHK_DIR_EXISTS= test -d
 MKDIR         = mkdir -p

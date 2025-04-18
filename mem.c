@@ -4,8 +4,8 @@
  *
  */
 
-//#include "../h/quirks.h"
-#include "../QtSpecem/h/env.h"
+//#include "quirks.h"
+#include "env.h"
 
 
 #if !defined(NDEBUG)

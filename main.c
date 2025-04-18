@@ -7,8 +7,8 @@
 unsigned short draw_cpuregs();
 void list_basic(char * s);
 
-#include "../QtSpecem/h/z80.h"
-#include "../QtSpecem/h/iglobal.h"
+#include "z80.h"
+#include "iglobal.h"
 
 void print_hexdump(USHORT adress,int memory);
 
@@ -361,9 +361,11 @@ void do_commands(char * str)
                    while(1)
                    {
                       Trace = TraceOn;
+
                       // fool optimizer compilers, Trace is never 4
                       if (Trace == 4)
                          printf("%d", Trace);
+
                       if (Trace != 3)
                          break;
                       // need it to overcome compiler optimizations
