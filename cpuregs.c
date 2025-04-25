@@ -14,13 +14,15 @@
 #include "quirks.h"
 #include "env.h"
 
-char board[16][29] =
+char board[18][29] =
 {
    "                            ",
    " AF 0000  s=0  AF' 0000 s=0 ",
    " BC 0000  z=0  BC' 0000 z=0 ",
-   " DE 0000  h=0  DE' 0000 h=0 ",
-   " HL 0000  p=0  HL' 0000 p=0 ",
+   " DE 0000  x=0  DE' 0000 x=0 ",
+   " HL 0000  h=0  HL' 0000 h=0 ",
+   "          y=0           y=0 ",
+   "          p=0           p=0 ",
    "          n=0           n=0 ",
    "          c=0           c=0 ",
    "                            ",
@@ -85,22 +87,27 @@ unsigned short draw_cpuregs()
 
    *(board[1] + 12) = '0' + (Z80_S != 0);
    *(board[2] + 12) = '0' + (Z80_Z != 0);
-   *(board[3] + 12) = '0' + (Z80_H != 0);
-   *(board[4] + 12) = '0' + (Z80_P != 0);
-   *(board[5] + 12) = '0' + (Z80_N != 0);
-   *(board[6] + 12) = '0' + (Z80_C != 0);
+   *(board[3] + 12) = '0' + (Z80_X != 0);
+   *(board[4] + 12) = '0' + (Z80_H != 0);
+   *(board[5] + 12) = '0' + (Z80_Y != 0);
+   *(board[6] + 12) = '0' + (Z80_P != 0);
+   *(board[7] + 12) = '0' + (Z80_N != 0);
+   *(board[8] + 12) = '0' + (Z80_C != 0);
    *(board[1] + 26) = '0' + ((F2 & (UCHAR)0x80) && (UCHAR)1);
    *(board[2] + 26) = '0' + ((F2 & (UCHAR)0x40) && (UCHAR)1);
-   *(board[3] + 26) = '0' + ((F2 & (UCHAR)0x10) && (UCHAR)1);
-   *(board[4] + 26) = '0' + ((F2 & (UCHAR)0x04) && (UCHAR)1);
-   *(board[5] + 26) = '0' + ((F2 & (UCHAR)0x02) && (UCHAR)1);
-   *(board[6] + 26) = '0' + ((F2 & (UCHAR)0x01) && (UCHAR)1);
-   *(board[8] + 14) = '0' + IFF1;
-   *(board[9] + 14) = '0' + IFF2;
-   *(board[10]+ 14) = '0' + _IM;
-   bin2hex16(board[8] + 23, readword((USHORT)SP+4) );
-   bin2hex16(board[9] + 23, readword((USHORT)SP+2) );
-   bin2hex16(board[10]+ 23, readword((USHORT)SP) );
+   *(board[3] + 26) = '0' + ((F2 & (UCHAR)0x20) && (UCHAR)1);
+   *(board[4] + 26) = '0' + ((F2 & (UCHAR)0x10) && (UCHAR)1);
+   *(board[5] + 26) = '0' + ((F2 & (UCHAR)0x08) && (UCHAR)1);
+   *(board[6] + 26) = '0' + ((F2 & (UCHAR)0x04) && (UCHAR)1);
+   *(board[7] + 26) = '0' + ((F2 & (UCHAR)0x02) && (UCHAR)1);
+   *(board[8] + 26) = '0' + ((F2 & (UCHAR)0x01) && (UCHAR)1);
+
+   *(board[10] + 14) = '0' + IFF1;
+   *(board[11] + 14) = '0' + IFF2;
+   *(board[12]+ 14) = '0' + _IM;
+   bin2hex16(board[10] + 23, readword((USHORT)SP+4) );
+   bin2hex16(board[11] + 23, readword((USHORT)SP+2) );
+   bin2hex16(board[12]+ 23, readword((USHORT)SP) );
    build_F();
 
    if(OldAF != AF)
@@ -120,26 +127,26 @@ unsigned short draw_cpuregs()
    if(OldHL2 != HL2)
       bin2hex16(board[4] + 19, OldHL2 = HL2);
    if(OldIX != IX)
-      bin2hex16(board[8] + 4, OldIX = IX);
+      bin2hex16(board[10] + 4, OldIX = IX);
    if(OldIY != IY)
-      bin2hex16(board[9] + 4, OldIY = IY);
+      bin2hex16(board[11] + 4, OldIY = IY);
    if(OldSP != SP)
-      bin2hex16(board[10] + 4, OldSP = SP);
-   bin2hex16(board[11] + 4, (USHORT)PC);
-   sprintf(board[11] + 11, "%ld ", clock_ticks );
-   bin2hex8(board[12] + 4, R);
+      bin2hex16(board[12] + 4, OldSP = SP);
+   bin2hex16(board[13] + 4, (USHORT)PC);
+   sprintf(board[13] + 11, "%ld ", clock_ticks );
+   bin2hex8(board[14] + 4, R);
    if(OldI != I)
-      bin2hex8(board[13] + 4, OldI = I);
+      bin2hex8(board[15] + 4, OldI = I);
    s = ldissbl((USHORT)PC);
    next_PC = PC + (unsigned short)*s;
    for(i = 0 ; i < *s ; i++)
    {
-      bin2hex8(board[12]+10 + i * 2, readbyte((USHORT)PC+i) );
+      bin2hex8(board[14]+10 + i * 2, readbyte((USHORT)PC+i) );
    }
    while(i < 7)
    {
-      *(board[12]+10+i * 2) = ' ';
-      *(board[12]+10+i++ * 2+1) = ' ';
+      *(board[14]+10+i * 2) = ' ';
+      *(board[14]+10+i++ * 2+1) = ' ';
    }
 
    /* Get Z80 intruction */
@@ -151,15 +158,15 @@ unsigned short draw_cpuregs()
       if(*s == '\t')
       {
          while(i < 5)
-            *(board[14]+10+ i++) = ' ';
+            *(board[16]+10+ i++) = ' ';
          s++;
       }
       else
-         *(board[14]+10+ i++) = *s++;
+         *(board[16]+10+ i++) = *s++;
    }
-   while(i < 15)
-      *(board[14]+10+ i++) = ' ';
-   for(i = 0 ; i < 16  ; i++)
+   while(i < 17)
+      *(board[16]+10+ i++) = ' ';
+   for(i = 0 ; i < 18  ; i++)
    {
       //gotoxy(LEFT, TOP+i);
       printf("%s\n", board[i]);
