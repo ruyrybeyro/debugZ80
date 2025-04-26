@@ -27,7 +27,7 @@ COMPRESS      = gzip -9f
 DISTNAME      = debugz801.0.0
 DISTDIR = .tmp/debugz801.0.0
 LINK          = clang
-LFLAGS        = -Wl
+LFLAGS        = -Wl -lm
 LIBS          = $(SUBLIBS)    
 AR            = ar cq
 RANLIB        = ranlib -s
@@ -49,7 +49,9 @@ SOURCES       = basic.c \
 		mem.c \
 		panic.c \
 		shm_client.c \
-		vars.c
+		vars.c \
+		z80tab_data.c \
+		zx_labels_data.c
 OBJECTS       = basic.o \
 		cpuregs.o \
 		debugz80.o \
@@ -60,7 +62,9 @@ OBJECTS       = basic.o \
 		mem.o \
 		panic.o \
 		shm_client.o \
-		vars.o
+		vars.o \
+		z80tab_data.o \
+		zx_labels_data.o
 DIST          = basic.c \
 		cpuregs.c \
 		debugz80.c \
@@ -71,7 +75,9 @@ DIST          = basic.c \
 		mem.c \
 		panic.c \
 		shm_client.c \
-		vars.c
+		vars.c \
+		z80tab_data.c \
+		zx_labels_data.c
 DESTDIR       = 
 TARGET        = debugz80
 
@@ -98,7 +104,7 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents $(DISTDIR)/
-	$(COPY_FILE) --parents basic.c cpuregs.c debugz80.c dissbl.c flags.c hexdump.c main.c mem.c panic.c shm_client.c vars.c $(DISTDIR)/
+	$(COPY_FILE) --parents basic.c cpuregs.c debugz80.c dissbl.c flags.c hexdump.c main.c mem.c panic.c shm_client.c vars.c z80tab_data.c zx_labels_data.c $(DISTDIR)/
 
 compiler_clean: clean
 
@@ -144,7 +150,9 @@ debugz80.o: debugz80.c ../QtSpecem/h/env.h \
 dissbl.o: dissbl.c ../QtSpecem/h/env.h \
 		../QtSpecem/h/z80.h \
 		../QtSpecem/h/quirks.h \
-		../QtSpecem/h/iglobal.h
+		../QtSpecem/h/iglobal.h \
+		z80tab_data.h \
+		zx_labels_data.h
 	$(CC) -c $(CFLAGS) $(INCPATH) -o dissbl.o dissbl.c
 
 flags.o: flags.c ../QtSpecem/h/env.h \
@@ -184,6 +192,12 @@ vars.o: vars.c ../QtSpecem/h/quirks.h \
 		../QtSpecem/h/z80.h \
 		../QtSpecem/h/iglobal.h
 	$(CC) -c $(CFLAGS) $(INCPATH) -o vars.o vars.c
+
+z80tab_data.o: z80tab_data.c z80tab_data.h
+	$(CC) -c $(CFLAGS) $(INCPATH) -o z80tab_data.o z80tab_data.c
+
+zx_labels_data.o: zx_labels_data.c zx_labels_data.h
+	$(CC) -c $(CFLAGS) $(INCPATH) -o zx_labels_data.o zx_labels_data.c
 
 ####### Install
 

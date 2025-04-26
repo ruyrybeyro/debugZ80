@@ -1,6 +1,6 @@
 /*
  *			  EmuZ80 v1.0
- *	      (c) 1991,1992 Rui Fernando Ferreira Ribeiro
+ *	      (c) 1991-2025 Rui Fernando Ferreira Ribeiro
  *
  * -------------------------------------------------------
  *
@@ -13,6 +13,8 @@
 #include <string.h>
 #include <ctype.h>
 #include "env.h"
+#include "z80tab_data.h"   /* Added for embedded tables */
+#include "zx_labels_data.h" /* Added for embedded labels */
 #undef toupper
 
 static void Init_dissbl();
@@ -212,107 +214,18 @@ unsigned short hextodec(char * s)
    return((((unsigned short)v1)<<4)+v2);
 }
 
-static void Init_labels(void)
-{
-   FILE * stream;
-   unsigned short str_len, pos = 5, tmp;
-   char buffer[255];
-
-   // alloc label pointers for the 64K addresses
-   if( !(label_table = (char **)calloc(65536, sizeof(char *)) ) )
-   {  
-      Panic("Insuficient memory");
-   }
-   if(!(stream = fopen("zx_labels.txt", "r")))
-   {  
-      Panic("Error: can't read 'zx_labels.txt' file");
-   }
-   while(fgets(buffer, 199, stream))
-   {  
-     str_len=strlen(buffer);
-     buffer[--str_len] = '\0';
-
-     tmp = (int)strtol(buffer, NULL, 16);
-
-     if (!(*(label_table + tmp) = malloc(str_len-pos+1)))
-            Panic("Insuficient memory");
-     strcpy(*(label_table + tmp), buffer+pos);
-   }
-   fclose(stream);
-}
-
 /*=========================================================================*
  *                            Init_dissbl                                  *
  *=========================================================================*/
 static void Init_dissbl()
 {
-   FILE * stream;
-   unsigned short line = 0, str_len, pos, tmp;
-   char buffer[255];
-
    inited++;
-   if( !(maintable = (char **)calloc(256, sizeof(char *)) ) ||
-       !(CBtable   = (char **)calloc(256, sizeof(char *)) ) ||
-       !(EDtable   = (char **)calloc(256, sizeof(char *)) )  )
-   {
-      Panic("Insuficient memory");
-   }
-   if(!(stream = fopen("z80tab.txt", "r")))
-   {
-      Panic("Error: can't read 'z80tab.txt' file");
-   }
-   while(fgets(buffer, 199, stream))
-   {
-      line++;
-      str_len=strlen(buffer);
-      if( (str_len < 3) || (buffer[0] == ';') )
-         continue;
-      /* delete space at beginning */
-      while(buffer[str_len-1] <= ' ')
-      {
-         buffer[--str_len] = '\0';
-      }
-      for(pos = 0; buffer[pos] && (buffer[pos] != '\t') ; pos++);
-      if(!buffer[pos] || ((pos != 2) && (pos != 4)) || (str_len >= 30) )
-      {
-	 sprintf(buffer, "Error : invalid  'z80.tab' line ; %u", line);
-         Panic(buffer);
-      }
-      str_len = str_len - pos++;
-      tmp = hextodec(buffer);
-      if(pos == 3)
-      {
-         if (!(*(maintable + tmp) = malloc(str_len)) )
-	    Panic("Insuficient memory");
-         strcpy(*(maintable + tmp), buffer+pos);
-      }
-      else
-      {
-         if(tmp == 0xCB)
-         {
-            tmp = hextodec(buffer+2);
-            if (!(*(CBtable + tmp) = malloc(str_len)) )
-	       Panic("Insuficient memory");
-            strcpy(*(CBtable + tmp), buffer+pos);
-         }
-         else
-            if(tmp == 0xED)
-            {
-               tmp = hextodec(buffer+2);
-               if (!(*(EDtable + tmp) = malloc(str_len)) )
-		  Panic("Insuficient memory");
-               strcpy(*(EDtable + tmp), buffer+pos);
-            }
-            else
-            {
-               sprintf(buffer, 
-	      "Error : invalid extension 'z80.tab', line %u", line);
-               Panic(buffer);
-            }
-      }
-   }
-   fclose(stream);
-   Init_labels();
+   
+   /* Use embedded instruction tables instead of reading from z80tab.txt */
+   init_z80tab_data(&maintable, &CBtable, &EDtable);
+   
+   /* Use embedded label data instead of reading from zx_labels.txt */
+   init_zx_labels_data(&label_table);
 }
 
 /*=========================================================================*
@@ -324,18 +237,26 @@ void Close_dissbl()
 
    if(inited)
       inited--;
-   for( i = 0 ; i < 256 ; i++)
+   for(i = 0; i < 256; i++)
    {
       if(*(maintable+i))
          free((VOID *)*(maintable+i));
       if(*(CBtable+i))
          free((VOID *)*(CBtable+i));
-      if(*(maintable+i))
+      if(*(EDtable+i))
          free((VOID *)*(EDtable+i));
    }
    free((VOID *)maintable);
    free((VOID *)CBtable);
    free((VOID *)EDtable);
+   
+   /* Free labels memory */
+   for(i = 0; i < 65536; i++) {
+      if(*(label_table+i))
+         free((VOID *)*(label_table+i));
+   }
+   free((VOID *)label_table);
 }
 
 /* EOF: DISSBL.C */
+
