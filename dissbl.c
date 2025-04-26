@@ -233,7 +233,7 @@ static void Init_dissbl()
  *=========================================================================*/
 void Close_dissbl()
 {
-   short i;
+   unsigned short i;
 
    if(inited)
       inited--;
@@ -251,7 +251,7 @@ void Close_dissbl()
    free((VOID *)EDtable);
    
    /* Free labels memory */
-   for(i = 0; i < 65536; i++) {
+   for(i = 0; i <= 65535; i++) {
       if(*(label_table+i))
          free((VOID *)*(label_table+i));
    }
