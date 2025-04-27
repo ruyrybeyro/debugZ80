@@ -10,6 +10,7 @@
 #define MAX_LINES 20
 
 void show_system_vars();
+void list_basic_vars(void);
 
 // ZX Spectrum BASIC tokens as they are in ROM
 char tokens[][10] =
@@ -161,6 +162,12 @@ void list_basic(char * s)
    if ( (s != NULL) && !strncmp(s, "sysvars", 7) )
    {
       show_system_vars();
+      return;
+   }
+
+   if ( (s != NULL) && !strncmp(s, "basicvars", 9) )
+   {
+      list_basic_vars();
       return;
    }
 

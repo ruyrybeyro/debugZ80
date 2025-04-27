@@ -84,6 +84,7 @@ void show_help(void)
    printf(" L list              - List ZX BASIC program without reveal numbers\n");
    printf(" L addr              - List ZX BASIC with addresses\n");
    printf(" L sysvars           - List system variables\n");
+   printf(" L basicvars         - List BASIC variables\n");
    printf(" L linebuffer        - Print BASIC linebuffer\n");
    printf(" L noheaders         - Disable loading header printing\n");
    printf(" L nosaldret         - Disable LD_BYTES falling into SA_LD_RET\n");
