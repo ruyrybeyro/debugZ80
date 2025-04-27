@@ -61,6 +61,7 @@ Important: debugZ80 must be launched *after* QtSpecem. The files `z80tab.txt` an
 | `R Y XX` | Load 8-bit registers |
 | `L` | List ZX BASIC program |
 | `L sysvars` | List system variables |
+| `L basicvars` | List BASIC variables |
 | `K XXXX XX` | Poke address with byte |
 | `?` | Display help |
 | `ENTER` | Repeat last command |
