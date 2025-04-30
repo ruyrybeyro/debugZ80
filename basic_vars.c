@@ -239,7 +239,7 @@ void list_basic_vars(void) {
             
             if (readbyte(vars_addr) == 0) {
                 // Small integer format
-                int sign = readbyte(vars_addr + 1) ? -1 : 1;
+                int sign = readbyte(vars_addr + 1) == 0xFF ? -1 : 1;  // 0xFF for negative, 0x00 for positive
                 int value = readbyte(vars_addr + 2) | (readbyte(vars_addr + 3) << 8);
                 printf("%d\n", sign * value);
             } else {
