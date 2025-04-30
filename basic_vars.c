@@ -77,11 +77,93 @@ void limited_hexdump(USHORT start_addr, USHORT end_addr) {
     }
 }
 
+// New function to decode variable names
+// For numeric variables, handles multi-letter names
+// For other types, only handles single-letter names
+// Returns the number of bytes consumed for the name (including the first byte)
+int decode_var_name(int addr, char* name_buffer, int max_len) {
+    (void)max_len; // Suppress unused parameter warning
+    
+    unsigned char first_byte = readbyte(addr);
+    unsigned char type_bits = first_byte & 0xE0;  // Upper 3 bits for type
+    char first_letter = (first_byte & 0x1F) + 'A' - 1;  // Lower 5 bits for letter code
+    
+    // Put first letter in buffer
+    name_buffer[0] = first_letter;
+    
+    // Only numeric variables (type 0x60 or 0xA0) can have multi-letter names
+    if (type_bits == 0x60 || type_bits == 0xA0) {
+        // Multi-letter variable names
+        int name_len = 1;
+        int pos = 1;
+        
+        // Look ahead for multiple letters
+        for (int i = 0; i < 9 && pos < 10; i++) {
+            unsigned char next_byte = readbyte(addr + pos);
+            
+            // If this is the last byte of memory, stop
+            if (addr + pos >= 0xFFFF) {
+                break;
+            }
+            
+            // Special case for the last letter - has high bit set
+            if (i > 0) {
+                // Check if the next byte could be part of a value (0x00) 
+                // or doesn't have high bit set
+                unsigned char peek_next = readbyte(addr + pos + 1);
+                if (peek_next == 0x00) {
+                    // This is likely the last letter of the name
+                    // Only accept it if it has high bit set
+                    if ((next_byte & 0x80) == 0) {
+                        break;  // Not part of name
+                    }
+                }
+            }
+            
+            // Process the byte
+            if ((next_byte & 0x80) && i == 0 && (next_byte & 0x7F) == 0) {
+                // Special case for end marker with high bit
+                break;
+            } 
+            else if ((next_byte >= 'a' && next_byte <= 'z') || 
+                     (next_byte >= 'A' && next_byte <= 'Z')) {
+                // Direct ASCII letter without high bit (typically middle letters)
+                name_buffer[name_len++] = toupper(next_byte);
+                pos++;
+            } 
+            else if ((next_byte & 0x80) && ((next_byte & 0x7F) >= 'a' && (next_byte & 0x7F) <= 'z')) {
+                // ASCII with high bit set (typically the last letter)
+                name_buffer[name_len++] = toupper(next_byte & 0x7F);
+                pos++;
+            } 
+            else if ((next_byte & 0x80) && ((next_byte & 0x1F) >= 1 && (next_byte & 0x1F) <= 26)) {
+                // Encoded letter with high bit (A=1, B=2, etc.)
+                name_buffer[name_len++] = (next_byte & 0x1F) + 'A' - 1;
+                pos++;
+            } 
+            else {
+                // Not recognized as a letter or already at value data
+                break;
+            }
+        }
+        
+        // Null-terminate the name
+        name_buffer[name_len] = '\0';
+        
+        // Return total bytes used for the name
+        return pos;
+    } else {
+        // All other variable types (string, arrays, FOR) only have single-letter names
+        name_buffer[1] = '\0';
+        return 1;  // Just the first byte
+    }
+}
+
 void list_basic_vars(void) {
     int vars_addr, nxtlin_addr;
     int var_start_addr;
     unsigned char var_byte;
-    char var_name;
+    char var_name[11];  // Buffer for variable name (up to 10 chars + null terminator)
     int var_len, dims, i, total_elements;
     
     // Get system variables addresses
@@ -119,27 +201,41 @@ void list_basic_vars(void) {
             short_hexdump(vars_addr, 1);
             break;
         }
-
+        
+        // Special case: If we see a 0x00 followed by 0x80, it's likely part of the end marker
+        if (readbyte(vars_addr) == 0x00 && vars_addr + 1 < nxtlin_addr && readbyte(vars_addr + 1) == 0x80) {
+            printf("End marker sequence at %04X: 00 80\n", vars_addr);
+            short_hexdump(vars_addr, 2);
+            break;
+        }
+        
         var_byte = readbyte(vars_addr++);
-        var_name = (var_byte & 0x1F) + 'A' - 1;  // Lower 5 bits for letter code
+        
+        // Decode the variable name
+        int name_len = decode_var_name(var_start_addr, var_name, 10);
+        
+        // Advance vars_addr past the name (first byte already incremented above)
+        if (name_len > 1) {
+            vars_addr += (name_len - 1);
+        }
 
         // Get type bits (bits 5-7)
         unsigned char type_bits = var_byte & 0xE0;
         
         // Process based on type
         
-        // Numeric variable: 0x60 (0110xxxx)
-        if (type_bits == 0x60) {
+        // Numeric variable: 0x60 (0110xxxx) or 0xA0 (1010xxxx for special KL-type variables)
+        if (type_bits == 0x60 || type_bits == 0xA0) {
             // Check if we have enough space for a numeric variable
             if (vars_addr + 5 > nxtlin_addr) {
-                printf("[%04X] %c = Incomplete numeric variable (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s = Incomplete numeric variable (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 short_hexdump(vars_addr, nxtlin_addr - vars_addr);
                 break;
             }
             
             // Always show the variable header
-            printf("[%04X] %c = ", var_start_addr, var_name);
+            printf("[%04X] %s = ", var_start_addr, var_name);
             
             if (readbyte(vars_addr) == 0) {
                 // Small integer format
@@ -147,11 +243,19 @@ void list_basic_vars(void) {
                 int value = readbyte(vars_addr + 2) | (readbyte(vars_addr + 3) << 8);
                 printf("%d\n", sign * value);
             } else {
-                // Floating point
+                // Standard floating point
                 printf("%lf\n", zx2d(mem + vars_addr));
             }
             
             printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
+            // Display multi-letter name bytes if applicable
+            if (name_len > 1) {
+                printf("  Multi-letter name bytes: %02X", var_byte);
+                for (i = 1; i < name_len; i++) {
+                    printf(" %02X", readbyte(var_start_addr + i));
+                }
+                printf("\n");
+            }
             printf("  Numeric value (5 bytes):\n");
             short_hexdump(vars_addr, 5);
             vars_addr += 5;  // Skip 5-byte numeric value
@@ -160,7 +264,7 @@ void list_basic_vars(void) {
         else if (type_bits == 0x40) {
             // Check if we have enough space for the string length
             if (vars_addr + 2 > nxtlin_addr) {
-                printf("[%04X] %c$ = Incomplete string variable (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s$ = Incomplete string variable (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 short_hexdump(vars_addr, nxtlin_addr - vars_addr);
                 break;
@@ -171,7 +275,7 @@ void list_basic_vars(void) {
             
             // Check if we have enough space for the string content
             if (vars_addr + 2 + var_len > nxtlin_addr) {
-                printf("[%04X] %c$ = Incomplete string (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s$ = Incomplete string (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 printf("  String length bytes: %02X %02X (Length: %d)\n", 
                        readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
@@ -179,7 +283,7 @@ void list_basic_vars(void) {
                 break;
             }
             
-            printf("[%04X] %c$ = \"", var_start_addr, var_name);
+            printf("[%04X] %s$ = \"", var_start_addr, var_name);
             
             // Display string content (up to 20 chars)
             for (i = 0; i < var_len && i < 20; i++) {
@@ -194,6 +298,14 @@ void list_basic_vars(void) {
             }
             
             printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
+            // Display multi-letter name bytes if applicable
+            if (name_len > 1) {
+                printf("  Multi-letter name bytes: %02X", var_byte);
+                for (i = 1; i < name_len; i++) {
+                    printf(" %02X", readbyte(var_start_addr + i));
+                }
+                printf("\n");
+            }
             printf("  String length bytes: %02X %02X (Length: %d)\n", 
                    readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
             printf("  String content:\n");
@@ -206,17 +318,17 @@ void list_basic_vars(void) {
         else if (type_bits == 0x80) {
             // Check if we have enough space for the array length
             if (vars_addr + 2 > nxtlin_addr) {
-                printf("[%04X] %c() = Incomplete numeric array (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s() = Incomplete numeric array (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 short_hexdump(vars_addr, nxtlin_addr - vars_addr);
                 break;
             }
             
-            var_len = readword(vars_addr);
+            var_len = readbyte(vars_addr) | (readbyte(vars_addr + 1) << 8);
             
             // Check if we have enough space for dimensions byte
             if (vars_addr + 3 > nxtlin_addr) {
-                printf("[%04X] %c() = Incomplete numeric array (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s() = Incomplete numeric array (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                        readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
@@ -228,7 +340,7 @@ void list_basic_vars(void) {
             
             // Check if we have enough space for dimensions
             if (vars_addr + 3 + dims * 2 > nxtlin_addr) {
-                printf("[%04X] %c() = Incomplete numeric array dimensions (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s() = Incomplete numeric array dimensions (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                        readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
@@ -238,7 +350,7 @@ void list_basic_vars(void) {
             }
             
             // Print array header
-            printf("[%04X] %c(", var_start_addr, var_name);
+            printf("[%04X] %s(", var_start_addr, var_name);
             
             // Calculate header size
             int header_size = 3; // Length (2) + Dims (1)
@@ -246,8 +358,14 @@ void list_basic_vars(void) {
             // Print dimensions and calculate total elements
             total_elements = 1;
             for (i = 0; i < dims; i++) {
+                // Get dimension size as stored in memory
                 int dim_size = readbyte(vars_addr + 3 + i*2) | (readbyte(vars_addr + 4 + i*2) << 8);
+                
+                // For ZX BASIC (traditional), arrays are 1-indexed
+                // DIM A(5) means indices 1-5 = 5 elements
+                // DIM B(3,2) means 3×2 = 6 elements (indices 1-3, 1-2)
                 total_elements *= dim_size;
+                
                 printf("%d", dim_size);
                 if (i < dims - 1) printf(",");
                 header_size += 2;
@@ -256,6 +374,14 @@ void list_basic_vars(void) {
             printf(") = Numeric array [%d elements]\n", total_elements);
             
             printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
+            // Display multi-letter name bytes if applicable
+            if (name_len > 1) {
+                printf("  Multi-letter name bytes: %02X", var_byte);
+                for (i = 1; i < name_len; i++) {
+                    printf(" %02X", readbyte(var_start_addr + i));
+                }
+                printf("\n");
+            }
             printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                    readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
             printf("  Dimensions byte: %02X (Dimensions: %d)\n", readbyte(vars_addr + 2), dims);
@@ -285,17 +411,17 @@ void list_basic_vars(void) {
         else if (type_bits == 0xC0) {
             // Check if we have enough space for the array length
             if (vars_addr + 2 > nxtlin_addr) {
-                printf("[%04X] %c$() = Incomplete string array (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s$() = Incomplete string array (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 short_hexdump(vars_addr, nxtlin_addr - vars_addr);
                 break;
             }
             
-            var_len = readword(vars_addr);
+            var_len = readbyte(vars_addr) | (readbyte(vars_addr + 1) << 8);
             
             // Check if we have enough space for dimensions byte
             if (vars_addr + 3 > nxtlin_addr) {
-                printf("[%04X] %c$() = Incomplete string array (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s$() = Incomplete string array (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                        readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
@@ -307,7 +433,7 @@ void list_basic_vars(void) {
             
             // Check if we have enough space for dimensions
             if (vars_addr + 3 + dims * 2 > nxtlin_addr) {
-                printf("[%04X] %c$() = Incomplete string array dimensions (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s$() = Incomplete string array dimensions (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                        readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
@@ -317,7 +443,7 @@ void list_basic_vars(void) {
             }
             
             // Print array header
-            printf("[%04X] %c$(", var_start_addr, var_name);
+            printf("[%04X] %s$(", var_start_addr, var_name);
             
             // Calculate header size
             int header_size = 3; // Length (2) + Dims (1)
@@ -325,8 +451,14 @@ void list_basic_vars(void) {
             // Print dimensions and calculate total elements
             total_elements = 1;
             for (i = 0; i < dims; i++) {
+                // Get dimension size as stored in memory
                 int dim_size = readbyte(vars_addr + 3 + i*2) | (readbyte(vars_addr + 4 + i*2) << 8);
+                
+                // For ZX BASIC (traditional), arrays are 1-indexed
+                // DIM A(5) means indices 1-5 = 5 elements
+                // DIM B(3,2) means 3×2 = 6 elements (indices 1-3, 1-2)
                 total_elements *= dim_size;
+                
                 printf("%d", dim_size);
                 if (i < dims - 1) printf(",");
                 header_size += 2;
@@ -335,6 +467,14 @@ void list_basic_vars(void) {
             printf(") = String array [%d elements]\n", total_elements);
             
             printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
+            // Display multi-letter name bytes if applicable
+            if (name_len > 1) {
+                printf("  Multi-letter name bytes: %02X", var_byte);
+                for (i = 1; i < name_len; i++) {
+                    printf(" %02X", readbyte(var_start_addr + i));
+                }
+                printf("\n");
+            }
             printf("  Array length bytes: %02X %02X (Length: %d)\n", 
                    readbyte(vars_addr), readbyte(vars_addr + 1), var_len);
             printf("  Dimensions byte: %02X (Dimensions: %d)\n", readbyte(vars_addr + 2), dims);
@@ -364,14 +504,22 @@ void list_basic_vars(void) {
         else if (type_bits == 0xE0) {
             // Check if we have enough space
             if (vars_addr + 18 > nxtlin_addr) {
-                printf("[%04X] %c = Incomplete FOR loop control (reached NXTLIN)\n", var_start_addr, var_name);
+                printf("[%04X] %s = Incomplete FOR loop control (reached NXTLIN)\n", var_start_addr, var_name);
                 printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
                 short_hexdump(vars_addr, nxtlin_addr - vars_addr);
                 break;
             }
             
-            printf("[%04X] %c (FOR loop control)\n", var_start_addr, var_name);
+            printf("[%04X] %s (FOR loop control)\n", var_start_addr, var_name);
             printf("  Variable header: %02X (Type: %02X)\n", var_byte, type_bits);
+            // Display multi-letter name bytes if applicable
+            if (name_len > 1) {
+                printf("  Multi-letter name bytes: %02X", var_byte);
+                for (i = 1; i < name_len; i++) {
+                    printf(" %02X", readbyte(var_start_addr + i));
+                }
+                printf("\n");
+            }
             printf("  Current value: %lf\n", zx2d(mem + vars_addr));
             printf("  Limit: %lf\n", zx2d(mem + vars_addr + 5));
             printf("  Step: %lf\n", zx2d(mem + vars_addr + 10));
@@ -380,16 +528,48 @@ void list_basic_vars(void) {
                    readbyte(vars_addr + 15) | (readbyte(vars_addr + 16) << 8));
             printf("  Statement: %02X (%d)\n", readbyte(vars_addr + 17), readbyte(vars_addr + 17));
             
-            // Show memory contents
-            short_hexdump(vars_addr, 18);
+            // Show memory contents - full 18 bytes
+            printf("  Memory [%04X]: ", vars_addr);
+            for (i = 0; i < 18; i++) {
+                printf("%02X ", readbyte(vars_addr + i));
+                if (i == 15) {
+                    printf(" | ");
+                    for (int j = 0; j < 16; j++) {
+                        unsigned char c = readbyte(vars_addr + j);
+                        printf("%c", isprint(c) ? c : '.');
+                    }
+                    printf("\n              ");
+                }
+            }
+            printf(" | ");
+            for (i = 16; i < 18; i++) {
+                unsigned char c = readbyte(vars_addr + i);
+                printf("%c", isprint(c) ? c : '.');
+            }
+            printf("\n");
             
             vars_addr += 18;  // Skip FOR loop control data
         }
         else {
-            printf("[%04X] %c = Unknown variable type (0x%02X)\n", var_start_addr, var_name, var_byte);
-            printf("  Variable header: %02X\n", var_byte);
-            short_hexdump(var_start_addr, 1);
-            break;  // Exit to avoid infinite loop
+            // Unknown variable type or possible data corruption
+            if (var_byte == 0x00) {
+                // Handle special case: This could be part of an end marker sequence (0x00 0x80)
+                if (vars_addr < nxtlin_addr && readbyte(vars_addr) == 0x80) {
+                    printf("End marker sequence at %04X: 00 80\n", var_start_addr);
+                    short_hexdump(var_start_addr, 2);
+                    break;
+                }
+                
+                // If it's just a zero byte, it's an end marker
+                printf("[%04X] End marker (0x00)\n", var_start_addr);
+                short_hexdump(var_start_addr, 1);
+                break;
+            } else {
+                printf("[%04X] %s = Unknown variable type (0x%02X)\n", var_start_addr, var_name, var_byte);
+                printf("  Variable header: %02X\n", var_byte);
+                short_hexdump(var_start_addr, 1);
+                break;  // Exit to avoid infinite loop
+            }
         }
         
         printf("\n"); // Extra line between variables for better readability
