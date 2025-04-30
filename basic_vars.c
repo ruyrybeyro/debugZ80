@@ -241,9 +241,17 @@ void list_basic_vars(void) {
             
             if (readbyte(vars_addr) == 0) {
                 // Small integer format
-                int sign = readbyte(vars_addr + 1) == 0xFF ? -1 : 1;  // 0xFF for negative, 0x00 for positive
-                int value = readbyte(vars_addr + 2) | (readbyte(vars_addr + 3) << 8);
-                printf("%d\n", sign * value);
+                if (readbyte(vars_addr + 1) == 0xFF) {
+                    // Negative number - handle two's complement correctly
+                    unsigned int value = readbyte(vars_addr + 2) | (readbyte(vars_addr + 3) << 8);
+                    // Convert from two's complement to negative value
+                    int signed_value = -((~value + 1) & 0xFFFF);
+                    printf("%d\n", signed_value);
+                } else {
+                    // Positive number
+                    int value = readbyte(vars_addr + 2) | (readbyte(vars_addr + 3) << 8);
+                    printf("%d\n", value);
+                }
             } else {
                 // Standard floating point
                 printf("%lf\n", zx2d(mem + vars_addr));
