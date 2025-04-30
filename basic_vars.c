@@ -202,11 +202,13 @@ void list_basic_vars(void) {
             break;
         }
         
-        // Special case: If we see a 0x00 followed by 0x80, it's likely part of the end marker
-        if (readbyte(vars_addr) == 0x00 && vars_addr + 1 < nxtlin_addr && readbyte(vars_addr + 1) == 0x80) {
-            printf("End marker sequence at %04X: 00 80\n", vars_addr);
-            short_hexdump(vars_addr, 2);
-            break;
+        // Special case: If we see a 0x00, it's probably an unused area
+        if (readbyte(vars_addr) == 0x00) {
+            // Just skip over zero bytes without treating them as part of end marker
+            printf("Unused byte at %04X: 00\n", var_start_addr);
+            short_hexdump(var_start_addr, 1);
+            vars_addr++;
+            continue;
         }
         
         var_byte = readbyte(vars_addr++);
@@ -553,17 +555,11 @@ void list_basic_vars(void) {
         else {
             // Unknown variable type or possible data corruption
             if (var_byte == 0x00) {
-                // Handle special case: This could be part of an end marker sequence (0x00 0x80)
-                if (vars_addr < nxtlin_addr && readbyte(vars_addr) == 0x80) {
-                    printf("End marker sequence at %04X: 00 80\n", var_start_addr);
-                    short_hexdump(var_start_addr, 2);
-                    break;
-                }
-                
-                // If it's just a zero byte, it's an end marker
-                printf("[%04X] End marker (0x00)\n", var_start_addr);
+                // If it's just a zero byte, treat as unused memory
+                printf("[%04X] Unused memory (0x00)\n", var_start_addr);
                 short_hexdump(var_start_addr, 1);
-                break;
+                vars_addr = var_start_addr + 1;  // Skip this byte and continue
+                continue;
             } else {
                 printf("[%04X] %s = Unknown variable type (0x%02X)\n", var_start_addr, var_name, var_byte);
                 printf("  Variable header: %02X\n", var_byte);
