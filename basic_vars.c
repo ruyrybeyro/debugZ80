@@ -12,6 +12,10 @@
  * This module parses ZX Spectrum BASIC variables from memory, displaying
  * their types, names, and values in a readable format.
  * 
+ * BASIC variables are stored in a dedicated area of memory between:
+ * - VARS (23627/0x5C4B): Points to the start of the variables area
+ * - E_LINE (23641/0x5C59): Points to the end of the BASIC program area
+ * 
  * Variable types (bits 5-7 of first byte):
  * - 0x40 (0100xxxx): String variables (A$)
  * - 0x60 (0110xxxx): Numeric variables (A)
@@ -241,9 +245,13 @@ void format_numeric_value(int addr, char *value_str, size_t size) {
 
 /**
  * Check if a variable is complete (fits within memory bounds)
+ * @param var_addr Starting address of the variable data
+ * @param var_size Size of the variable data in bytes
+ * @param e_line_addr E_LINE address (end of variables area)
+ * @return true if the variable fits completely within the memory bounds
  */
-bool is_var_complete(int var_addr, int var_size, int end_addr) {
-    return (var_addr + var_size <= end_addr);
+bool is_var_complete(int var_addr, int var_size, int e_line_addr) {
+    return (var_addr + var_size <= e_line_addr);
 }
 
 /* ======================================================================== 
@@ -254,9 +262,9 @@ bool is_var_complete(int var_addr, int var_size, int end_addr) {
  * Process a numeric variable
  * Returns the total size of the variable in bytes
  */
-int process_numeric_variable(variable_t *var, int nxtlin_addr) {
-    if (!is_var_complete(var->value_addr, 5, nxtlin_addr)) {
-        printf("[%04X] %s = Incomplete numeric variable (reached NXTLIN)\n", 
+int process_numeric_variable(variable_t *var, int e_line_addr) {
+    if (!is_var_complete(var->value_addr, 5, e_line_addr)) {
+        printf("[%04X] %s = Incomplete numeric variable (reached E_LINE)\n", 
                var->start_addr, var->name);
         return 0;
     }
@@ -289,10 +297,10 @@ int process_numeric_variable(variable_t *var, int nxtlin_addr) {
  * Process a string variable
  * Returns the total size of the variable in bytes
  */
-int process_string_variable(variable_t *var, int nxtlin_addr) {
+int process_string_variable(variable_t *var, int e_line_addr) {
     // Check if we can read the string length (2 bytes)
-    if (!is_var_complete(var->value_addr, 2, nxtlin_addr)) {
-        printf("[%04X] %s$ = Incomplete string variable (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr, 2, e_line_addr)) {
+        printf("[%04X] %s$ = Incomplete string variable (reached E_LINE)\n", 
                var->start_addr, var->name);
         return 0;
     }
@@ -301,8 +309,8 @@ int process_string_variable(variable_t *var, int nxtlin_addr) {
     int str_len = safe_readbyte(var->value_addr) | (safe_readbyte(var->value_addr + 1) << 8);
     
     // Check if the complete string fits within memory
-    if (!is_var_complete(var->value_addr + 2, str_len, nxtlin_addr)) {
-        printf("[%04X] %s$ = Incomplete string (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr + 2, str_len, e_line_addr)) {
+        printf("[%04X] %s$ = Incomplete string (reached E_LINE)\n", 
                var->start_addr, var->name);
         return 0;
     }
@@ -346,10 +354,10 @@ int process_string_variable(variable_t *var, int nxtlin_addr) {
  * Process an array (numeric or string)
  * Returns the total size of the variable in bytes
  */
-int process_array_variable(variable_t *var, int nxtlin_addr, bool is_string) {
+int process_array_variable(variable_t *var, int e_line_addr, bool is_string) {
     // Check if we can read the array length (2 bytes)
-    if (!is_var_complete(var->value_addr, 2, nxtlin_addr)) {
-        printf("[%04X] %s%s() = Incomplete array (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr, 2, e_line_addr)) {
+        printf("[%04X] %s%s() = Incomplete array (reached E_LINE)\n", 
                var->start_addr, var->name, is_string ? "$" : "");
         return 0;
     }
@@ -358,8 +366,8 @@ int process_array_variable(variable_t *var, int nxtlin_addr, bool is_string) {
     int array_len = safe_readbyte(var->value_addr) | (safe_readbyte(var->value_addr + 1) << 8);
     
     // Check if we can read the dimensions byte
-    if (!is_var_complete(var->value_addr + 2, 1, nxtlin_addr)) {
-        printf("[%04X] %s%s() = Incomplete array dimensions (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr + 2, 1, e_line_addr)) {
+        printf("[%04X] %s%s() = Incomplete array dimensions (reached E_LINE)\n", 
                var->start_addr, var->name, is_string ? "$" : "");
         return 0;
     }
@@ -368,8 +376,8 @@ int process_array_variable(variable_t *var, int nxtlin_addr, bool is_string) {
     int dims = safe_readbyte(var->value_addr + 2);
     
     // Check if we can read all dimension sizes
-    if (!is_var_complete(var->value_addr + 3, dims * 2, nxtlin_addr)) {
-        printf("[%04X] %s%s() = Incomplete array dimensions (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr + 3, dims * 2, e_line_addr)) {
+        printf("[%04X] %s%s() = Incomplete array dimensions (reached E_LINE)\n", 
                var->start_addr, var->name, is_string ? "$" : "");
         return 0;
     }
@@ -426,8 +434,8 @@ int process_array_variable(variable_t *var, int nxtlin_addr, bool is_string) {
     print_hex_dump(var->value_addr, header_size, "  Memory ");
     
     // Check if the entire array fits within the variable area
-    if (!is_var_complete(var->value_addr, 2 + array_len, nxtlin_addr)) {
-        printf("  Warning: Array data extends beyond NXTLIN boundary\n");
+    if (!is_var_complete(var->value_addr, 2 + array_len, e_line_addr)) {
+        printf("  Warning: Array data extends beyond E_LINE boundary\n");
         return 0;  // Can't determine total size safely
     }
     
@@ -438,10 +446,10 @@ int process_array_variable(variable_t *var, int nxtlin_addr, bool is_string) {
  * Process a FOR loop control variable
  * Returns the total size of the variable in bytes
  */
-int process_for_variable(variable_t *var, int nxtlin_addr) {
+int process_for_variable(variable_t *var, int e_line_addr) {
     // FOR loop variables are always 18 bytes of data
-    if (!is_var_complete(var->value_addr, 18, nxtlin_addr)) {
-        printf("[%04X] %s = Incomplete FOR loop control (reached NXTLIN)\n", 
+    if (!is_var_complete(var->value_addr, 18, e_line_addr)) {
+        printf("[%04X] %s = Incomplete FOR loop control (reached E_LINE)\n", 
                var->start_addr, var->name);
         return 0;
     }
@@ -493,14 +501,14 @@ int process_for_variable(variable_t *var, int nxtlin_addr) {
 void list_basic_vars(void) {
     // Get system variables addresses
     int vars_addr = readword(0x5C4B);    // VARS system variable
-    int nxtlin_addr = readword(0x5C55);  // NXTLIN system variable
+    int e_line_addr = readword(0x5C59);  // E_LINE system variable
     
-    printf("\nBASIC Variables (VARS=%04X to NXTLIN=%04X):\n", vars_addr, nxtlin_addr);
+    printf("\nBASIC Variables (VARS=%04X to E_LINE=%04X):\n", vars_addr, e_line_addr);
     printf("----------------\n");
     
-    // Find 0x80 end marker if it exists before NXTLIN
+    // Find 0x80 end marker if it exists before E_LINE
     int end_marker_addr = -1;
-    for (int i = vars_addr; i < nxtlin_addr; i++) {
+    for (int i = vars_addr; i < e_line_addr; i++) {
         if (safe_readbyte(i) == VAR_END_MARKER) {
             end_marker_addr = i;
             break;
@@ -508,7 +516,7 @@ void list_basic_vars(void) {
     }
     
     // Determine actual end of variables area
-    int vars_end = (end_marker_addr != -1) ? end_marker_addr + 1 : nxtlin_addr;
+    int vars_end = (end_marker_addr != -1) ? end_marker_addr + 1 : e_line_addr;
     
     // Show hexdump of the complete variables area
     print_memory_region(vars_addr, vars_end, "Full hexdump of VARS area");
@@ -517,7 +525,7 @@ void list_basic_vars(void) {
     // Loop through variables area
     int current_addr = vars_addr;
     
-    while (current_addr < nxtlin_addr) {
+    while (current_addr < e_line_addr) {
         // Check for end marker
         if (safe_readbyte(current_addr) == VAR_END_MARKER) {
             printf("End marker at %04X: 80\n", current_addr);
@@ -547,19 +555,19 @@ void list_basic_vars(void) {
         int var_size = 0;
         
         if (var_type == VAR_TYPE_NUMERIC || var_type == VAR_TYPE_MULTI_LETTER) {
-            var_size = process_numeric_variable(&var, nxtlin_addr);
+            var_size = process_numeric_variable(&var, e_line_addr);
         }
         else if (var_type == VAR_TYPE_STRING) {
-            var_size = process_string_variable(&var, nxtlin_addr);
+            var_size = process_string_variable(&var, e_line_addr);
         }
         else if (var_type == VAR_TYPE_NUM_ARRAY) {
-            var_size = process_array_variable(&var, nxtlin_addr, false);
+            var_size = process_array_variable(&var, e_line_addr, false);
         }
         else if (var_type == VAR_TYPE_STR_ARRAY) {
-            var_size = process_array_variable(&var, nxtlin_addr, true);
+            var_size = process_array_variable(&var, e_line_addr, true);
         }
         else if (var_type == VAR_TYPE_FOR_LOOP) {
-            var_size = process_for_variable(&var, nxtlin_addr);
+            var_size = process_for_variable(&var, e_line_addr);
         }
         else {
             // Unknown variable type
@@ -577,18 +585,18 @@ void list_basic_vars(void) {
             // Advance to next variable
             current_addr += var_size;
         } else {
-            // Variable processing failed (likely reached NXTLIN)
+            // Variable processing failed (likely reached E_LINE)
             // Skip to the end to prevent infinite loop
-            current_addr = nxtlin_addr;
+            current_addr = e_line_addr;
         }
         
         printf("\n"); // Extra line between variables for better readability
     }
     
-    // Check if we reached NXTLIN without finding an end marker
-    if (current_addr >= nxtlin_addr && 
-        (current_addr == nxtlin_addr || safe_readbyte(current_addr-1) != VAR_END_MARKER)) {
-        printf("Reached NXTLIN at %04X without finding end marker (0x80)\n", nxtlin_addr);
+    // Check if we reached E_LINE without finding an end marker
+    if (current_addr >= e_line_addr && 
+        (current_addr == e_line_addr || safe_readbyte(current_addr-1) != VAR_END_MARKER)) {
+        printf("Reached E_LINE at %04X without finding end marker (0x80)\n", e_line_addr);
     }
 }
 
