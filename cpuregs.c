@@ -133,7 +133,7 @@ unsigned short draw_cpuregs()
    if(OldSP != SP)
       bin2hex16(board[12] + 4, OldSP = SP);
    bin2hex16(board[13] + 4, (USHORT)PC);
-   sprintf(board[13] + 11, "%ld ", clock_ticks );
+   sprintf(board[13] + 11, "%lu ", clock_ticks );
    bin2hex8(board[14] + 4, R);
    if(OldI != I)
       bin2hex8(board[15] + 4, OldI = I);
