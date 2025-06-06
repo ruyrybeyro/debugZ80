@@ -560,6 +560,7 @@ void do_commands(char * str)
                 }
                 } while (!status && do_it_again);
                 }
+                unlink("/tmp/a");  // Clean up temp file
                 break; 
 
 	case '?':
