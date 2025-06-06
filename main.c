@@ -371,6 +371,7 @@ void do_commands(char * str)
                          break;
                       // need it to overcome compiler optimizations
 		      printf("");
+                      usleep(1000);  // 1ms delay instead of busy wait
                    }
                 }
                 draw_cpuregs();
